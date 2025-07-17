@@ -20,6 +20,9 @@ radius=69
 dist=240 #all the centres of whose we are seeing distance are in the same level(y-cord).So only see the x_direction distance will show the distance between the centres
 BOARD_ROWS = 3
 BOARD_COLS = 3
+error_start_time = 0
+show_error_type = None  
+ERROR_DISPLAY_DURATION = 250
 
 # rgb: red green blue
 RED = (255, 0, 0)
@@ -415,15 +418,14 @@ while True:
             if valid==True and selected==False and not again:
                 player = player % 2 + 1
 
-            if valid==False and not again:
-                textobj = font1.render('Invalid Move!', True, (0,0,0))
-                text_rect = textobj.get_rect(center=(WIDTH / 2, 30))
-                screen.blit(textobj, text_rect)
-                
-            if wrong_select==True and not again:
-                score3 = font1.render(f"{'Eraser' if player==1 else 'Sharpner' }'s turn!", True, (0, 0, 0))
-                text_rect = score3.get_rect(center=((WIDTH / 2) + 10, 670))
-                screen.blit(score3, text_rect)
+            if valid == False and not again:
+                error_start_time = pygame.time.get_ticks()
+                show_error_type = 'invalid'
+
+            if wrong_select == True and not again:
+                error_start_time = pygame.time.get_ticks()
+                show_error_type = 'wrong_select'
+
 
             if valid==True and not selected:
                 for row in range(BOARD_ROWS):
@@ -437,6 +439,20 @@ while True:
     score2 = font1.render(f'Sharpner: {sharpner_won_times}', True, (0, 0, 0))
     screen.blit(score2, (550,10))
     draw_figures()
+
+    current_time = pygame.time.get_ticks()
+    if show_error_type and current_time - error_start_time <= ERROR_DISPLAY_DURATION:
+        if show_error_type == 'invalid':
+            textobj = font1.render('Invalid Move!', True, (255, 0, 0))
+            text_rect = textobj.get_rect(center=(WIDTH / 2, 30))
+            screen.blit(textobj, text_rect)
+        elif show_error_type == 'wrong_select':
+            score3 = font1.render(f"{'Eraser' if player == 1 else 'Sharpner'}'s turn!", True, (255, 0, 0))
+            text_rect = score3.get_rect(center=(WIDTH / 2, 30))
+            screen.blit(score3, text_rect)
+    elif show_error_type:
+        show_error_type = None 
+
     pygame.display.update()
     if again:
         time.sleep(0.2)
