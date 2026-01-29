@@ -1,281 +1,152 @@
-import socket,threading,pygame,sys,time
-    
-###if not server then client###
+# Local Multiplayer Mode - Network play between two devices
+from game_core import *
+import socket
+import threading
 
-# initializes pygame
-pygame.init()
-pygame.font.init()
-
-# ---------
-# CONSTANTS
-# ---------
-
-WIDTH, HEIGHT = 690, 690
-LINE_WIDTH = 15
-org_x,org_y=55,55
-des_x,des_y=0,0
-inc_x,inc_y=242,245
-org_x_centre,org_y_centre=100,100
-x_centres,y_centres=[100,340,580],[100,340,580]
-radius=60
-dist=240 #all the centres of whose we are seeing distance are in the same level(y-cord).So only see the x_direction distance will show the distance between the centres
-BOARD_ROWS = 3
-BOARD_COLS = 3
-
-# rgb: red green blue
-RED = (255, 0, 0)
-BG_COLOR = (28, 170, 156)
-LINE_COLOR = (23, 145, 135)
-CIRCLE_COLOR = (239, 231, 200)
-CROSS_COLOR = (66, 66, 66)
-
-# ------
-# IMAGES,FONTS
-# ------
-game_board=pygame.image.load('assets/brd.png')
-game_board=pygame.transform.scale(game_board,(WIDTH,HEIGHT))
-
-eraser=pygame.image.load('assets/eraser.png')
-eraser= pygame.transform.scale(eraser, (90,90))
-
-sharpner=pygame.image.load('assets/sharpner.png')
-sharpner= pygame.transform.scale(sharpner, (90,90))
-
-title=pygame.image.load('assets/title.png')
-title= pygame.transform.scale(title, (90,90))
-
-tutorial=pygame.image.load('assets/tutorial.png')
-tutorial= pygame.transform.scale(tutorial, (90,90))
-
-about=pygame.image.load('assets/about.png')
-about= pygame.transform.scale(about, (90,90))
-
-font1 =pygame.font.Font('freesansbold.ttf',20)
-font2=pygame.font.Font('freesansbold.ttf',42)
-gui_font = pygame.font.Font(None, 30)
-
-# ---------
-# VARIABLES
-# ---------
-player = 1
-turn=None
-start_game=False
-game_over = False
-selected=False
-valid=False
-wrong_select=False
-played=0
-eraser_won_times=0
-sharpner_won_times=0
-connected=False
-left=False
-clients=[]
 
 # ------
 # SCREEN
 # ------
-screen = pygame.display.set_mode( (WIDTH, HEIGHT) )
-pygame.display.set_caption( '3 Men Morris' )
-
-# -------------
-# CONSOLE BOARD
-# -------------
-board = [[  0  ,  0  ,  0  ],
-         [  0  ,  0  ,  0  ],
-         [  0  ,  0  ,  0  ]]
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption('3 Men Morris - Local Multiplayer')
 
 # ---------
-# FUNCTIONS
+# MULTIPLAYER SPECIFIC VARIABLES
 # ---------
-def click_valid(x,y):
-    row,col=None,None
-    for row in range(3):
-        for col in range(3):
-            if x_centres[col]-radius<x<x_centres[col]+radius and y_centres[row]-radius<y<y_centres[row]+radius and available_square(row,col):
-                mark_square(row,col,player)
-                return True,row,col
-
-    return False,row,col
-
-def location(row,col):
-    x_step_far = (x_centres[col] - org_x_centre) / dist     #how much step far is the inital circle from the destionation circle in x_direction
-    y_step_far = (y_centres[row] - org_y_centre) / dist     #how much step far is the inital circle from the destionation circle in y_direction
-    des_x=org_x+inc_x*x_step_far     #taking the inital cordinate that is in initial circle to final circle in x direction
-    des_y=org_y+inc_y*y_step_far     #taking the inital cordinate that is in initial circle to final circle in u direction
-
-    return des_x,des_y
-
-def select(x,y,selected):
-    prev_row,prev_col,wrong_select=None,None,False
-    for row in range(3):
-        for col in range(3):
-            if x_centres[col]-radius<x<x_centres[col]+radius and y_centres[row]-radius<y<y_centres[row]+radius:
-                if not available_square(row,col):
-                    if board[row][col]==player:
-                        prev_row,prev_col=row,col
-                        board[row][col]=0
-                        selected=True
-                        valid=True
-                        wrong_select=False
-                        break
-                    else:
-                        valid=False
-                        wrong_select=True
-                else:
-                    valid=False
-                    return prev_row,prev_col,selected,valid,wrong_select 
-
-    return prev_row,prev_col,selected,valid,wrong_select
-
-def move(x,y,prev_row,prev_col):
-    selected,valid=True,False
-    row,col=valid_click_for_move(x,y)
-    if available_square(row,col):
-        if  prev_row- row in [1, -1, 0] and prev_col - col in [1, -1, 0]:
-            if prev_row- row in [1, -1] and prev_col - col in [1, -1]:
-                if (row == col == 1) or (prev_row == prev_col == 1):
-                    board[row][col]=player
-                    selected,valid=False,True
-            else:
-                if prev_row == row and prev_col == col:
-                    valid=False
-                else:
-                    board[row][col]=player
-                    selected,valid=False,True
-    else:
-        if board[row][col]==player:
-            board[prev_row][prev_col]=player
-            prev_row,prev_col=row,col
-            board[row][col]=0
-            valid=True
-    return prev_row,prev_col,valid,selected
-
-def valid_click_for_move(x,y):
-    row,col=None,None
-    for row in range(3):
-        for col in range(3):
-            if x_centres[col]-radius<x<x_centres[col]+radius and y_centres[row]-radius<y<y_centres[row]+radius:
-                return row,col
-
-    return row,col
-
-def draw_figures():
-    for row in range(BOARD_ROWS):
-        for col in range(BOARD_COLS):
-            if board[row][col] == 1:
-                screen.blit(eraser,location(row,col))
-            elif board[row][col] == 2:
-                screen.blit(sharpner,location(row,col))
-
-def mark_square(row, col, player):
-    board[row][col] = player
-
-def available_square(row, col):
-    return board[row][col] == 0
-
-def is_board_full():
-    eraser=0
-    sharpner=0
-    for row in range(BOARD_ROWS):
-        for col in range(BOARD_COLS):
-            if board[row][col] == 1:
-                eraser+=1
-            if board[row][col] == 2:
-                sharpner+=1
-    if eraser == 3 and sharpner == 3:
-        return True
-
-    return False
-
-
-def check_win(player):
-    # vertical win check
-    for col in range(BOARD_COLS):
-        if board[0][col] == player and board[1][col] == player and board[2][col] == player:
-            return True
-
-    # horizontal win check
-    for row in range(BOARD_ROWS):
-        if board[row][0] == player and board[row][1] == player and board[row][2] == player:
-            return True
-
-    # asc diagonal win check
-    if board[2][0] == player and board[1][1] == player and board[0][2] == player:
-        return True
-
-    # desc diagonal win chek
-    if board[0][0] == player and board[1][1] == player and board[2][2] == player:
-        return True
-
-    return False
+player = 1
+turn = None
+start_game = False
+game_over = False
+selected = False
+valid = False
+wrong_select = False
+played = 0
+eraser_won_times = 0
+sharpner_won_times = 0
+connected = False
+left = False
+clients = []
+prev_row, prev_col = None, None
 
 
 def restart():
-    global player,game_over,selected,valid,wrong_select
-    for row in range(BOARD_ROWS):
-        for col in range(BOARD_COLS):
-            board[row][col] = 0
+    global player, game_over, selected, valid, wrong_select
+    restart_board()
     player = 1
     game_over = False
-    selected=False
-    valid=False
-    wrong_select=False 
+    selected = False
+    valid = False
+    wrong_select = False
+
 
 def close_connection():
-    if turn==1:
+    if turn == 1:
         for clnt in clients:
             clnt.close()
         server.close()
     else:
         client.close()
 
+
 def send(msg):
-    if turn==1:
+    if turn == 1:
         for clnt in clients:
             clnt.send(msg)
     else:
         client.send(msg)
 
+
 # ---------
-# Multiplayer
+# Multiplayer-specific game functions (different from game_core)
+# ---------
+def select_multiplayer(x, y, selected, current_player):
+    """Multiplayer version - clears the board position instead of using selected state"""
+    prev_row, prev_col, wrong_select, valid = None, None, False, False
+    for row in range(3):
+        for col in range(3):
+            if x_centres[col] - radius < x < x_centres[col] + radius and y_centres[row] - radius < y < y_centres[row] + radius:
+                if not available_square(row, col):
+                    if board[row][col] == current_player:
+                        prev_row, prev_col = row, col
+                        board[row][col] = 0  # Clear the position for multiplayer sync
+                        selected = True
+                        valid = True
+                        wrong_select = False
+                        break
+                    else:
+                        valid = False
+                        wrong_select = True
+                else:
+                    valid = False
+                    return prev_row, prev_col, selected, valid, wrong_select
+
+    return prev_row, prev_col, selected, valid, wrong_select
+
+
+def move_multiplayer(x, y, prev_row, prev_col, current_player):
+    """Multiplayer version - handles piece movement without selected visual state"""
+    selected, valid = True, False
+    row, col = valid_click_for_move(x, y)
+    if available_square(row, col):
+        if prev_row - row in [1, -1, 0] and prev_col - col in [1, -1, 0]:
+            if prev_row - row in [1, -1] and prev_col - col in [1, -1]:
+                if (row == col == 1) or (prev_row == prev_col == 1):
+                    board[row][col] = current_player
+                    selected, valid = False, True
+            else:
+                if prev_row == row and prev_col == col:
+                    valid = False
+                else:
+                    board[row][col] = current_player
+                    selected, valid = False, True
+    else:
+        if board[row][col] == current_player:
+            board[prev_row][prev_col] = current_player
+            prev_row, prev_col = row, col
+            board[row][col] = 0  # Clear the position for multiplayer sync
+            valid = True
+    return prev_row, prev_col, valid, selected
+
+
+# ---------
+# Multiplayer Network Functions
 # ---------
 def is_server():
     global client
-    server=False
+    server = False
     try:
         client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         client.connect(('localhost', 5555))
     except:
-        server=True
+        server = True
     return server
 
 #for clients
 def client_run():
-    global client,turn
-    turn=2
+    global client, turn
+    turn = 2
 
     def receive():
-        global board,player,start_game,game_over,left
+        global board, player, start_game, game_over, left
         while True:
             try:
                 # Receive Message From Server
-    
                 message = eval(client.recv(4096).decode('utf-8'))
                 
                 if message[0] == 'turn':
-                    client.send(str(['Start',True]).encode())
-                    start_game=True
+                    client.send(str(['Start', True]).encode())
+                    start_game = True
         
                 elif message[0] == 'board':
-                    board=message[2]
-                    if message[1]!=turn:
+                    board = message[2]
+                    if message[1] != turn:
                         player = player % 2 + 1
     
                 elif message[0] == 'win':
-                    board=message[2]
-                    game_over=True
+                    board = message[2]
+                    game_over = True
                      
-                elif message[0]=='left':
+                elif message[0] == 'left':
                     print(message[1])
         
                 else:
@@ -283,7 +154,7 @@ def client_run():
             except:
                 # Close Connection When Error
                 print("Server closed")
-                left=True
+                left = True
                 client.close()
                 break
         
@@ -292,8 +163,8 @@ def client_run():
 
 #for servers
 def server_run():
-    global server,turn
-    turn=1
+    global server, turn
+    turn = 1
 
     # Starting Server
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -302,7 +173,7 @@ def server_run():
     
     # Handling Messages From Clients
     def handle(client):
-        global board,player,start_game,game_over,left
+        global board, player, start_game, game_over, left
         while True:
             try:
                 # Broadcasting Messages
@@ -310,18 +181,18 @@ def server_run():
                 message = eval(message.decode('utf-8'))
     
                 if message[0] == 'Start':
-                    start_game=message[1]
+                    start_game = message[1]
 
                 elif message[0] == 'board':
-                    board=message[2]
-                    if message[1]!=turn:
+                    board = message[2]
+                    if message[1] != turn:
                         player = player % 2 + 1
 
                 elif message[0] == 'win':
-                    board=message[2]
-                    game_over=True
+                    board = message[2]
+                    game_over = True
                      
-                elif message[0]=='left':
+                elif message[0] == 'left':
                     print(message[1])
                 else:
                     print(message)
@@ -332,14 +203,13 @@ def server_run():
                 index = clients.index(client)
                 clients.remove(client)
                 client.close()
-                left=True
+                left = True
                 break
     
     # Receiving / Listening Function
-    
     def receive():
         global clients
-        while len(clients)<1:
+        while len(clients) < 1:
             try:
                 # Accept Connection
                 client, address = server.accept()
@@ -349,8 +219,8 @@ def server_run():
                 # Request And Store Nickname
                 clients.append(client)
         
-                #Giving its turn
-                client.send(str(['turn',2]).encode())
+                # Giving its turn
+                client.send(str(['turn', 2]).encode())
         
                 # Start Handling Thread For Client
                 thread = threading.Thread(target=handle, args=(client,))
@@ -360,63 +230,13 @@ def server_run():
     print("Server is listening......")
     thread = threading.Thread(target=receive)
     thread.start()
-    
 
-# ---------
-# GUI
-# ---------
-class Button:
-    def __init__(self,text,width,height,pos,elevation):
-        #Core attributes
-        self.not_running=True
-        self.pressed = False
-        self.elevation = elevation
-        self.dynamic_elecation = elevation
-        self.original_y_pos = pos[1]
 
-        # top rectangle
-        self.top_rect = pygame.Rect(pos,(width,height))
-        self.top_color = '#475F77'
 
-        # bottom rectangle
-        self.bottom_rect = pygame.Rect(pos,(width,height))
-        self.bottom_color = '#354B5E'
-        #text
-        self.text_surf = gui_font.render(text,True,'#FFFFFF')
-        self.text_rect = self.text_surf.get_rect(center = self.top_rect.center)
-
-    def draw(self,screen):
-        # elevation logic
-        self.top_rect.y = self.original_y_pos - self.dynamic_elecation
-        self.text_rect.center = self.top_rect.center
-
-        self.bottom_rect.midtop = self.top_rect.midtop
-        self.bottom_rect.height = self.top_rect.height + self.dynamic_elecation
-
-        pygame.draw.rect(screen,self.bottom_color, self.bottom_rect,border_radius = 12)
-        pygame.draw.rect(screen,self.top_color, self.top_rect,border_radius = 12)
-        screen.blit(self.text_surf, self.text_rect)
-        self.check_click()
-
-    def check_click(self):
-        mouse_pos = pygame.mouse.get_pos()
-        if self.top_rect.collidepoint(mouse_pos):
-            self.top_color = '#475F77'
-            if pygame.mouse.get_pressed()[0]:
-                self.dynamic_elecation = 0
-                self.pressed = True
-            else:
-                self.dynamic_elecation = self.elevation
-                if self.pressed == True:
-                    self.not_running=False
-                    self.pressed = False
-        else:
-            self.dynamic_elecation = self.elevation
-            self.top_color = '#D74B4B'
-
-def start_scene(screen):
-    title=pygame.image.load('assets/title.PNG')
-    on_start_scene=True
+# Custom start_scene for multiplayer (overrides game_core version)
+def multiplayer_start_scene(screen):
+    title_img = pygame.image.load('assets/title.PNG')
+    on_start_scene = True
     clock = pygame.time.Clock()
 
     button1 = Button('Start', 300, 40, ((WIDTH / 2) - 150, (HEIGHT / 2) + 80), 5)
@@ -430,13 +250,13 @@ def start_scene(screen):
                 sys.exit()
 
         screen.fill('#DCDDD8')
-        screen.blit(title,(40,200))
+        screen.blit(title_img, (40, 200))
         button1.draw(screen)
         button2.draw(screen)
         button3.draw(screen)
         button4.draw(screen)
 
-        if button1.not_running==False:
+        if button1.not_running == False:
             on_start_scene = False
             if is_server():
                 server_run()
@@ -455,81 +275,54 @@ def start_scene(screen):
         pygame.display.update()
         clock.tick(60)
 
-def tutorial_scene(screen,on_tutorial_scene=True):
-    tutorial=pygame.image.load('assets/tutorial.png')
-    button5=Button('Back', 100, 40, (530 , 640), 5)
-    while on_tutorial_scene:
-        screen.blit(tutorial,(0,0))
-        button5.draw(screen)
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                sys.exit()
-        pygame.display.update()
-        on_tutorial_scene = button5.not_running
 
-########################################################################################################################
-
-def about_scene(screen,on_about_scene=True):
-    about=pygame.image.load('assets/about.png')
-    button5=Button('Back', 100, 40, (530 , 640), 5)
-    while on_about_scene:
-        screen.blit(about,(0,0))
-        button5.draw(screen)
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                sys.exit()
-        pygame.display.update()
-        on_about_scene = button5.not_running
-
-########################################################################################################################
 
 def win_scene(screen):
-    global played,eraser_won_times,sharpner_won_times,start_game
+    global played, eraser_won_times, sharpner_won_times, start_game
 
     if check_win(1):
-        player=1
-        eraser_won_times+=1
+        winner_player = 1
+        eraser_won_times += 1
     else:
-        player=2
-        sharpner_won_times+=1
+        winner_player = 2
+        sharpner_won_times += 1
 
-    win=True
+    win = True
     if played < 3:
-        if eraser_won_times- sharpner_won_times in [-1,1,0]:
-            msg1 = f"{'Eraser' if player==1 else 'Sharpner' } won Round {played+1}!"
-            msg2 = f'Next Round: Round {played+2}'
-            played+=1
-
+        if eraser_won_times - sharpner_won_times in [-1, 1, 0]:
+            msg1 = f"{'Eraser' if winner_player == 1 else 'Sharpner'} won Round {played + 1}!"
+            msg2 = f'Next Round: Round {played + 2}'
+            played += 1
         else:
-            played=3
+            played = 3
     if played == 3:
-        msg1 = f"{'Eraser' if eraser_won_times>sharpner_won_times else 'Sharpner' } is the ultimate winner!"
-        msg2=f"{'Eraser' if eraser_won_times<sharpner_won_times else 'Sharpner' } You suck!!!!!!!!!!!!!!!!!!!!!!!!!"
+        msg1 = f"{'Eraser' if eraser_won_times > sharpner_won_times else 'Sharpner'} is the ultimate winner!"
+        msg2 = f"{'Eraser' if eraser_won_times < sharpner_won_times else 'Sharpner'} You suck!!!!!!!!!!!!!!!!!!!!!!!!!"
 
-    button2 = Button('Continue!', 300, 40, ((WIDTH / 2) - 150, (HEIGHT/2)+80), 5)
-    button3 = Button('Play again (For true gamers)', 300, 40, (30, (HEIGHT/2)+80), 5)
-    button4=  Button('Exit (If you are a loser)', 300, 40, (360, (HEIGHT/2)+80), 5)
+    button2 = Button('Continue!', 300, 40, ((WIDTH / 2) - 150, (HEIGHT / 2) + 80), 5)
+    button3 = Button('Play again (For true gamers)', 300, 40, (30, (HEIGHT / 2) + 80), 5)
+    button4 = Button('Exit (If you are a loser)', 300, 40, (360, (HEIGHT / 2) + 80), 5)
     while win:
-        screen.fill((255,255,255))
-        if played<3:
+        screen.fill((255, 255, 255))
+        if played < 3:
             button2.draw(screen)
-            if button2.not_running==False:
+            if button2.not_running == False:
                 restart()
-                if turn==2:
-                    send(str(['Start',True]).encode())
-                    start_game=True
-                win=False
+                if turn == 2:
+                    send(str(['Start', True]).encode())
+                    start_game = True
+                win = False
         else:
             button3.draw(screen)
             button4.draw(screen)
-            if button3.not_running==False:
+            if button3.not_running == False:
                 restart()
-                if turn==2:
-                    send(str(['Start',True]).encode())
-                    start_game=True
-                eraser_won_times,sharpner_won_times,played=0,0,0
-                win=False
-            elif button4.not_running==False:
+                if turn == 2:
+                    send(str(['Start', True]).encode())
+                    start_game = True
+                eraser_won_times, sharpner_won_times, played = 0, 0, 0
+                win = False
+            elif button4.not_running == False:
                 close_connection()
                 sys.exit()
 
@@ -537,7 +330,7 @@ def win_scene(screen):
         text_rect = textobj.get_rect(center=(WIDTH / 2, HEIGHT / 2))
 
         textobj2 = font1.render(msg2, True, (0, 0, 0))
-        text_rect2 = textobj2.get_rect(center=(WIDTH/2, (HEIGHT / 2)+40))
+        text_rect2 = textobj2.get_rect(center=(WIDTH / 2, (HEIGHT / 2) + 40))
 
         screen.blit(textobj, text_rect)
         screen.blit(textobj2, text_rect2)
@@ -549,11 +342,13 @@ def win_scene(screen):
         pygame.display.update()
 
 
-
 # --------
 # MAINLOOP
 # --------
-start_scene(screen)
+# --------
+# MAINLOOP
+# --------
+multiplayer_start_scene(screen)
 while True:
     screen.blit(game_board, (0, 0))
     for event in pygame.event.get():
@@ -565,40 +360,37 @@ while True:
 
             if selected == False:
                 if not is_board_full():
-                    valid,row,col=click_valid(x,y)
-
+                    valid, row, col = click_valid(x, y, player)
                 else:
-                    prev_row,prev_col,selected,valid,wrong_select=select(x, y,selected)
+                    prev_row, prev_col, selected, valid, wrong_select = select_multiplayer(x, y, selected, player)
             else:
-                prev_row,prev_col,valid,selected=move(x, y, prev_row,prev_col)
-
+                prev_row, prev_col, valid, selected = move_multiplayer(x, y, prev_row, prev_col, player)
 
             if valid == True and selected == False:
                 if check_win(player):
-                    game_over=True
-                    send(str(['win',game_over,board]).encode())
+                    game_over = True
+                    send(str(['win', game_over, board]).encode())
                 else:
-                    send(str(['board',turn,board]).encode())
+                    send(str(['board', turn, board]).encode())
                 player = player % 2 + 1
 
             if valid == False:
-                textobj = font1.render('Invalid Move!', True, (0,0,0))
+                textobj = font1.render('Invalid Move!', True, (0, 0, 0))
                 text_rect = textobj.get_rect(center=(WIDTH / 2, 30))
                 screen.blit(textobj, text_rect)
                 
             if wrong_select == True:
-                score3 = font1.render(f"{'Eraser' if player == 1 else 'Sharpner' }'s turn!", True, (0, 0, 0))
+                score3 = font1.render(f"{'Eraser' if player == 1 else 'Sharpner'}'s turn!", True, (0, 0, 0))
                 text_rect = score3.get_rect(center=((WIDTH / 2) + 10, 670))
                 screen.blit(score3, text_rect)
 
-    
-    draw_figures()   
+    draw_figures(screen)
     pygame.display.update()
     if left:
         sys.exit()
 
     if game_over:
-        start_game=False
+        start_game = False
         time.sleep(0.2)
         win_scene(screen)
             

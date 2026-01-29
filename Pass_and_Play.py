@@ -56,7 +56,7 @@ gui_font = pygame.font.Font(None, 30)
 # SCREEN
 # ------
 screen = pygame.display.set_mode( (WIDTH, HEIGHT) )
-pygame.display.set_caption( '3 Men Morris' )
+pygame.display.set_caption( '3 Men Morris - Pass And Play' )
 
 # -------------
 # CONSOLE BOARD
